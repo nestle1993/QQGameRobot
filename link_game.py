@@ -20,6 +20,8 @@ class LinkGameRobot:
             [[None] * self.col_block_num for _ in range(self.row_block_num)]
         self.matrix = \
             [[0] * self.col_block_num for _ in range(self.row_block_num)]
+        self.block2pos = dict()
+        self.match_pairs = list()
 
     def init(self):
         """
@@ -81,10 +83,12 @@ class LinkGameRobot:
                 # img_block.show()
                 self.img_blocks[x][y] = img_block
 
-    def convert_image_to_index(self, debug=False):
+    def convert_image_to_matrix(self, debug=False):
         """
         Convert image blocks to according indexes.
         Same image blocks should be assigned to the same indexes.
+
+        init a 2D matrix and a block_index to position dict.
         """
         empty_hash = self.color_hash((48, 76, 112))
         image_map = {}
@@ -100,16 +104,163 @@ class LinkGameRobot:
                 # input()
                 if this_image_hash == empty_hash:
                     self.matrix[x][y] = 0
-                    continue
                 else:
                     image_map.setdefault(this_image_hash, len(image_map) + 1)
                     self.matrix[x][y] = image_map.get(this_image_hash)
+                if self.matrix[x][y] != 0:
+                    block_idx = self.matrix[x][y]
+                    self.block2pos.setdefault(block_idx, [])
+                    self.block2pos[block_idx].append((x, y))
 
+        self.print_matrix()
+
+        # for k, v in self.block2pos.items():
+        #     print(k, v)
+
+    def find_pairs(self):
+        for block_idx, pos_list in self.block2pos.items():
+            length = len(pos_list)
+            for i in range(length):
+                for j in range(i + 1, length, 1):
+                    p1 = pos_list[i]
+                    p2 = pos_list[j]
+                    if self.match_1(p1, p2):
+                        self.match_pairs.append((p1, p2, 1))
+                        print("1", p1, p2)
+                        continue
+                    if self.match_2(p1, p2):
+                        self.match_pairs.append((p1, p2, 2))
+                        print("2", p1, p2)
+                        continue
+                    if self.match_3(p1, p2):
+                        self.match_pairs.append((p1, p2, 3))
+                        print("3", p1, p2)
+                        continue
+
+    def match_1(self, p1, p2):
+        """
+        Match method 1.
+        The two points are in the same row/column and they can be linked.
+        """
+        if p1[0] == p2[0]:
+            for i in range(min(p1[1], p2[1]) + 1, max(p1[1], p2[1]), 1):
+                if self.matrix[p1[0]][i] != 0:
+                    return False
+            return True
+        if p1[1] == p2[1]:
+            for i in range(min(p1[0], p2[0]) + 1, max(p1[0], p2[0]), 1):
+                if self.matrix[i][p1[1]] != 0:
+                    return False
+            return True
+
+    def match_2(self, p1, p2):
+        """
+        Match method 2.
+        The two points can be linked with a "7" shape line.
+        """
+        if p1[0] == p2[0] or p1[1] == p2[1]:
+            return False
+
+        """
+        cross point: (p2[0], p1[1])
+        p2 . . . pc . . . p2
+                 .
+                 p1
+                 .
+        p2 . . . pc . . . p2
+        
+        cross point: (p1[0], p2[1])
+        p2       pc       p2
+        .                 .
+        . . . . .p1 . . . . 
+        .                 .        
+        p2       pc       p2 
+        """
+        p_crosses = [(p2[0], p1[1]), (p1[0], p2[1])]
+        for p_cross in p_crosses:
+            f = [True, True]
+            for i in range(min(p1[1], p2[1]) + 1, max(p1[1], p2[1]), 1):
+                if self.matrix[p_cross[0]][i] != 0:
+                    f[0] = False
+                    break
+            for i in range(min(p1[0], p2[0]) + 1, max(p1[0], p2[0]), 1):
+                if self.matrix[i][p_cross[1]] != 0:
+                    f[1] = False
+                    break
+            if f[0] and f[1]:
+                return True
+
+    def match_3(self, p1, p2):
+        """
+        Match method 3.
+        The two points can be linked with a "u" shape line.
+        """
+        def _get_row_empty_points(x, y):
+            ret = set()
+            i = y - 1
+            while i >= 0:
+                if self.matrix[x][i] != 0:
+                    break
+                ret.add((x, i))
+                i -= 1
+            i = y + 1
+            while i < self.col_block_num:
+                if self.matrix[x][i] != 0:
+                    break
+                ret.add((x, i))
+                i += 1
+            return ret
+
+        def _get_col_empty_points(x, y):
+            ret = set()
+            i = x - 1
+            while i >= 0:
+                if self.matrix[i][y] != 0:
+                    break
+                ret.add((i, y))
+                i -= 1
+            i = x + 1
+            while i < self.row_block_num:
+                if self.matrix[i][y] != 0:
+                    break
+                ret.add((i, y))
+                i += 1
+            return ret
+
+        p1_row_empty_points = _get_row_empty_points(p1[0], p1[1])
+        p2_row_empty_points = _get_row_empty_points(p2[0], p2[1])
+        for pa in p1_row_empty_points:
+            for pb in p2_row_empty_points:
+                f = True
+                if pa[1] == pb[1]:
+                    for i in range(min(pa[0], pb[0]) + 1, max(pa[0], pb[0]), 1):
+                        if self.matrix[i][pa[1]] != 0:
+                            f = False
+                            break
+                    if f:
+                        return True
+
+        p1_col_empty_points = _get_col_empty_points(p1[0], p1[1])
+        p2_col_empty_points = _get_col_empty_points(p2[0], p2[1])
+        for pa in p1_col_empty_points:
+            for pb in p2_col_empty_points:
+                f = True
+                if pa[0] == pb[0]:
+                    for i in range(min(pa[1], pb[1]) + 1, max(pa[1], pb[1]), 1):
+                        if self.matrix[pa[0]][i] != 0:
+                            f = False
+                            break
+                    if f:
+                        return True
+        return False
+
+    def print_matrix(self):
         for x in range(self.row_block_num):
-            tmp = " ".join([str(i) for i in self.matrix[x]])
+            tmp = "\t".join([str(i) for i in self.matrix[x]])
             print(tmp)
 
-    def color_hash(self, color):
+    @staticmethod
+    def color_hash(color):
         """
         Specially for hashing the empty block's color.
         """
@@ -118,7 +269,8 @@ class LinkGameRobot:
             value += "%d,%d,%d," % (color[0], color[1], color[2])
         return hash(value)
 
-    def image_hash(self, img):
+    @staticmethod
+    def image_hash(img):
         """
         For the 35 x 31 block, get the diagonal 5, 10, 15, 20, 25 pixels to hash
         """
@@ -134,5 +286,6 @@ if __name__ == "__main__":
 
     # robot.init()
     robot.screenshot()
-    robot.convert_image_to_index()
+    robot.convert_image_to_matrix()
+    robot.find_pairs()
 
