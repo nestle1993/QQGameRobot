@@ -1,7 +1,10 @@
 import win32gui
 import win32api
 import win32con
+import pyautogui
 import operator
+import random
+import time
 from PIL import ImageGrab, Image
 
 
@@ -21,7 +24,7 @@ class LinkGameRobot:
         self.matrix = \
             [[0] * self.col_block_num for _ in range(self.row_block_num)]
         self.block2pos = dict()
-        self.match_pairs = list()
+        self.total_pairs = 0
 
     def init(self):
         """
@@ -30,7 +33,7 @@ class LinkGameRobot:
         screen_width = win32api.GetSystemMetrics(0)
         screen_height = win32api.GetSystemMetrics(1)
 
-        hwnd = win32gui.FindWindow(win32con.NULL, self.window_name)
+        self.hwnd = hwnd = win32gui.FindWindow(win32con.NULL, self.window_name)
         if not hwnd:
             exit(-1)
 
@@ -60,16 +63,17 @@ class LinkGameRobot:
         self.block_h = game_area_height / self.row_block_num
 
         print(self.block_w, self.block_h)
+        print(self.left_top_and_right_bot)
 
     def screenshot(self):
         """
         Take the screenshot and cut it into blocks
         """
-        # image = ImageGrab.grab(self.left_top_and_right_bot)
-        # image.save(r"C:\Users\dmtalen\Desktop\lianliankan\example2.png")
+        image = ImageGrab.grab(self.left_top_and_right_bot)
 
-        image = Image.open(r"C:\Users\dmtalen\Desktop\lianliankan\example2.png")
-        image.show()
+        image.save(r"C:\Users\dmtalen\Desktop\lianliankan\example3.png")
+        # image = Image.open(r"C:\Users\dmtalen\Desktop\lianliankan\example2.png")
+        # image.show()
 
         for x in range(self.row_block_num):
             for y in range(self.col_block_num):
@@ -111,6 +115,8 @@ class LinkGameRobot:
                     block_idx = self.matrix[x][y]
                     self.block2pos.setdefault(block_idx, [])
                     self.block2pos[block_idx].append((x, y))
+        for _, pos_list in self.block2pos.items():
+            self.total_pairs += len(pos_list) // 2
 
         self.print_matrix()
 
@@ -118,6 +124,7 @@ class LinkGameRobot:
         #     print(k, v)
 
     def find_pairs(self):
+        match_pairs = list()
         for block_idx, pos_list in self.block2pos.items():
             length = len(pos_list)
             for i in range(length):
@@ -125,17 +132,18 @@ class LinkGameRobot:
                     p1 = pos_list[i]
                     p2 = pos_list[j]
                     if self.match_1(p1, p2):
-                        self.match_pairs.append((p1, p2, 1))
-                        print("1", p1, p2)
+                        match_pairs.append((p1, p2, 1))
+                        # print("1", p1, p2)
                         continue
                     if self.match_2(p1, p2):
-                        self.match_pairs.append((p1, p2, 2))
-                        print("2", p1, p2)
+                        match_pairs.append((p1, p2, 2))
+                        # print("2", p1, p2)
                         continue
                     if self.match_3(p1, p2):
-                        self.match_pairs.append((p1, p2, 3))
-                        print("3", p1, p2)
+                        match_pairs.append((p1, p2, 3))
+                        # print("3", p1, p2)
                         continue
+        return match_pairs
 
     def match_1(self, p1, p2):
         """
@@ -172,18 +180,18 @@ class LinkGameRobot:
         cross point: (p1[0], p2[1])
         p2       pc       p2
         .                 .
-        . . . . .p1 . . . . 
+        pc . . . p1 . . . pc
         .                 .        
         p2       pc       p2 
         """
         p_crosses = [(p2[0], p1[1]), (p1[0], p2[1])]
         for p_cross in p_crosses:
             f = [True, True]
-            for i in range(min(p1[1], p2[1]) + 1, max(p1[1], p2[1]), 1):
+            for i in range(min(p1[1], p2[1]) + 1, max(p1[1], p2[1]) + 1, 1):
                 if self.matrix[p_cross[0]][i] != 0:
                     f[0] = False
                     break
-            for i in range(min(p1[0], p2[0]) + 1, max(p1[0], p2[0]), 1):
+            for i in range(min(p1[0], p2[0]) + 1, max(p1[0], p2[0]) + 1, 1):
                 if self.matrix[i][p_cross[1]] != 0:
                     f[1] = False
                     break
@@ -254,6 +262,53 @@ class LinkGameRobot:
                         return True
         return False
 
+    def execute_one_step(self, p1, p2):
+        def _random_shift():
+            return random.uniform(0.2, 0.8)
+
+        game_area_left = self.left_top_and_right_bot[0]
+        game_area_top = self.left_top_and_right_bot[1]
+
+        from_x = game_area_left + (p1[1] + _random_shift()) * self.block_w
+        from_y = game_area_top + (p1[0] + _random_shift()) * self.block_h
+
+        to_x = game_area_left + (p2[1] + _random_shift()) * self.block_w
+        to_y = game_area_top + (p2[0] + _random_shift()) * self.block_h
+
+        pyautogui.moveTo(from_x, from_y, 0.3, pyautogui.easeInOutQuad)
+        pyautogui.click()
+
+        time.sleep(random.uniform(0.1, 0.8))
+
+        pyautogui.moveTo(to_x, to_y, 0.3, pyautogui.easeInOutQuad)
+        pyautogui.click()
+
+    def update_matrix(self, p1, p2):
+        self.matrix[p1[0]][p1[1]] = 0
+        self.matrix[p2[0]][p2[1]] = 0
+
+    def run(self):
+        self.init()
+        self.screenshot()
+        self.convert_image_to_matrix()
+
+        linked_pairs = 0
+        linked_points = set()
+        while linked_pairs < self.total_pairs:
+            match_pairs = self.find_pairs()
+            match_pairs = sorted(match_pairs, key=lambda d: d[2])
+            print("!")
+            for p1, p2, match_i in match_pairs:
+                if p1 in linked_points or p2 in linked_points:
+                    continue
+                print(p1, p2, match_i)
+                self.execute_one_step(p1, p2)
+                self.update_matrix(p1, p2)
+                linked_pairs += 1
+                linked_points.add(p1)
+                linked_points.add(p2)
+                time.sleep(random.uniform(0.3, 1.2))
+
     def print_matrix(self):
         for x in range(self.row_block_num):
             tmp = "\t".join([str(i) for i in self.matrix[x]])
@@ -283,9 +338,5 @@ class LinkGameRobot:
 
 if __name__ == "__main__":
     robot = LinkGameRobot()
-
-    # robot.init()
-    robot.screenshot()
-    robot.convert_image_to_matrix()
-    robot.find_pairs()
+    robot.run()
 
